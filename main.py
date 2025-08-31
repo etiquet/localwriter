@@ -10,7 +10,6 @@ import uno
 import os 
 import logging
 import re
-import time
 
 from com.sun.star.beans import PropertyValue
 from com.sun.star.container import XNamed
