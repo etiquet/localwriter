@@ -119,7 +119,7 @@ class MainJob(unohelper.Base, XJobExecutor):
         return False
 
     def _is_openai_compatible(self):
-        endpoint = str(self.get_config("endpoint", "http://127.0.0.1:5000"))
+        endpoint = str(self.get_config("endpoint", "http://localhost:11434"))
         compatibility_flag = self._as_bool(self.get_config("openai_compatibility", False))
         return compatibility_flag or ("api.openai.com" in endpoint.lower())
 
@@ -132,7 +132,7 @@ class MainJob(unohelper.Base, XJobExecutor):
         except (TypeError, ValueError):
             max_tokens = 70
 
-        endpoint = str(self.get_config("endpoint", "http://127.0.0.1:5000")).rstrip("/")
+        endpoint = str(self.get_config("endpoint", "http://localhost:11434")).rstrip("/")
         api_key = str(self.get_config("api_key", ""))
         if api_type is None:
             api_type = str(self.get_config("api_type", "completions")).lower()
@@ -193,7 +193,8 @@ class MainJob(unohelper.Base, XJobExecutor):
 
         json_data = json.dumps(data).encode('utf-8')
         log_to_file(f"Request data: {json.dumps(data, indent=2)}")
-        log_to_file(f"Headers: {headers}")
+        safe_headers = {k: ("***" if k == "Authorization" else v) for k, v in headers.items()}
+        log_to_file(f"Headers: {safe_headers}")
         
         # Note: method='POST' is implicit when data is provided
         request = urllib.request.Request(url, data=json_data, headers=headers)
@@ -217,14 +218,12 @@ class MainJob(unohelper.Base, XJobExecutor):
         return "", None
 
     def get_ssl_context(self):
-        """
-        Create an SSL context that doesn't verify certificates.
-        This is needed for some environments where SSL certificates are not properly configured.
-        """
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        return ssl_context
+        if self._as_bool(self.get_config("disable_ssl_verification", False)):
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            return ssl_context
+        return ssl.create_default_context()
 
     def stream_request(self, request, api_type, append_callback):
         """
@@ -357,13 +356,15 @@ class MainJob(unohelper.Base, XJobExecutor):
 
         openai_compatibility_value = "true" if self._as_bool(self.get_config("openai_compatibility", False)) else "false"
         is_openwebui_value = "true" if self._as_bool(self.get_config("is_openwebui", False)) else "false"
+        disable_ssl_value = "true" if self._as_bool(self.get_config("disable_ssl_verification", False)) else "false"
         field_specs = [
-            {"name": "endpoint", "label": "Endpoint URL/Port:", "value": str(self.get_config("endpoint","http://127.0.0.1:5000"))},
+            {"name": "endpoint", "label": "Endpoint URL/Port:", "value": str(self.get_config("endpoint","http://localhost:11434"))},
             {"name": "model", "label": "Model (Required by Ollama/OpenAI):", "value": str(self.get_config("model",""))},
             {"name": "api_key", "label": "API Key (for OpenAI-compatible endpoints):", "value": str(self.get_config("api_key",""))},
             {"name": "api_type", "label": "API Type (completions/chat):", "value": str(self.get_config("api_type","completions"))},
             {"name": "is_openwebui", "label": "Is OpenWebUI endpoint? (true/false):", "value": is_openwebui_value, "type": "bool"},
             {"name": "openai_compatibility", "label": "OpenAI Compatible Endpoint? (true/false):", "value": openai_compatibility_value, "type": "bool"},
+            {"name": "disable_ssl_verification", "label": "Disable SSL verification? (true/false) -- RISK: exposes API keys to interception:", "value": disable_ssl_value, "type": "bool"},
             {"name": "extend_selection_max_tokens", "label": "Extend Selection Max Tokens:", "value": str(self.get_config("extend_selection_max_tokens","70")), "type": "int"},
             {"name": "extend_selection_system_prompt", "label": "Extend Selection System Prompt:", "value": str(self.get_config("extend_selection_system_prompt",""))},
             {"name": "edit_selection_max_new_tokens", "label": "Edit Selection Max New Tokens:", "value": str(self.get_config("edit_selection_max_new_tokens","0")), "type": "int"},
@@ -438,6 +439,33 @@ class MainJob(unohelper.Base, XJobExecutor):
         return result
     #end sharealike section 
 
+    def _save_settings(self, result):
+        if "extend_selection_max_tokens" in result:
+            self.set_config("extend_selection_max_tokens", result["extend_selection_max_tokens"])
+        if "extend_selection_system_prompt" in result:
+            self.set_config("extend_selection_system_prompt", result["extend_selection_system_prompt"])
+        if "edit_selection_max_new_tokens" in result:
+            self.set_config("edit_selection_max_new_tokens", result["edit_selection_max_new_tokens"])
+        if "edit_selection_system_prompt" in result:
+            self.set_config("edit_selection_system_prompt", result["edit_selection_system_prompt"])
+        if "endpoint" in result and result["endpoint"].startswith("http"):
+            self.set_config("endpoint", result["endpoint"])
+        if "api_key" in result:
+            self.set_config("api_key", result["api_key"])
+        if "api_type" in result:
+            api_type_value = str(result["api_type"]).strip().lower()
+            if api_type_value not in ("chat", "completions"):
+                api_type_value = "completions"
+            self.set_config("api_type", api_type_value)
+        if "is_openwebui" in result:
+            self.set_config("is_openwebui", result["is_openwebui"])
+        if "openai_compatibility" in result:
+            self.set_config("openai_compatibility", result["openai_compatibility"])
+        if "model" in result:
+            self.set_config("model", result["model"])
+        if "disable_ssl_verification" in result:
+            self.set_config("disable_ssl_verification", result["disable_ssl_verification"])
+
     def trigger(self, args):
         desktop = self.ctx.ServiceManager.createInstanceWithContext(
             "com.sun.star.frame.Desktop", self.ctx)
@@ -502,44 +530,9 @@ class MainJob(unohelper.Base, XJobExecutor):
             elif args == "settings":
                 try:
                     result = self.settings_box("Settings")
-                                    
-                    if "extend_selection_max_tokens" in result:
-                        self.set_config("extend_selection_max_tokens", result["extend_selection_max_tokens"])
-
-                    if "extend_selection_system_prompt" in result:
-                        self.set_config("extend_selection_system_prompt", result["extend_selection_system_prompt"])
-
-                    if "edit_selection_max_new_tokens" in result:
-                        self.set_config("edit_selection_max_new_tokens", result["edit_selection_max_new_tokens"])
-
-                    if "edit_selection_system_prompt" in result:
-                        self.set_config("edit_selection_system_prompt", result["edit_selection_system_prompt"])
-
-                    if "endpoint" in result and result["endpoint"].startswith("http"):
-                        self.set_config("endpoint", result["endpoint"])
-
-                    if "api_key" in result:
-                        self.set_config("api_key", result["api_key"])
-
-                    if "api_type" in result:
-                        api_type_value = str(result["api_type"]).strip().lower()
-                        if api_type_value not in ("chat", "completions"):
-                            api_type_value = "completions"
-                        self.set_config("api_type", api_type_value)
-
-                    if "is_openwebui" in result:
-                        self.set_config("is_openwebui", result["is_openwebui"])
-
-                    if "openai_compatibility" in result:
-                        self.set_config("openai_compatibility", result["openai_compatibility"])
-
-                    if "model" in result:                
-                        self.set_config("model", result["model"])
-
-
+                    self._save_settings(result)
                 except Exception as e:
                     text_range = selection.getByIndex(0)
-                    # Append the user input to the selected text
                     text_range.setString(text_range.getString() + ":error: " + str(e))
         elif hasattr(model, "Sheets"):
             try:
@@ -549,39 +542,7 @@ class MainJob(unohelper.Base, XJobExecutor):
                 if args == "settings":
                     try:
                         result = self.settings_box("Settings")
-                                        
-                        if "extend_selection_max_tokens" in result:
-                            self.set_config("extend_selection_max_tokens", result["extend_selection_max_tokens"])
-
-                        if "extend_selection_system_prompt" in result:
-                            self.set_config("extend_selection_system_prompt", result["extend_selection_system_prompt"])
-
-                        if "edit_selection_max_new_tokens" in result:
-                            self.set_config("edit_selection_max_new_tokens", result["edit_selection_max_new_tokens"])
-
-                        if "edit_selection_system_prompt" in result:
-                            self.set_config("edit_selection_system_prompt", result["edit_selection_system_prompt"])
-
-                        if "endpoint" in result and result["endpoint"].startswith("http"):
-                            self.set_config("endpoint", result["endpoint"])
-
-                        if "api_key" in result:
-                            self.set_config("api_key", result["api_key"])
-
-                        if "api_type" in result:
-                            api_type_value = str(result["api_type"]).strip().lower()
-                            if api_type_value not in ("chat", "completions"):
-                                api_type_value = "completions"
-                            self.set_config("api_type", api_type_value)
-
-                        if "is_openwebui" in result:
-                            self.set_config("is_openwebui", result["is_openwebui"])
-
-                        if "openai_compatibility" in result:
-                            self.set_config("openai_compatibility", result["openai_compatibility"])
-
-                        if "model" in result:                
-                            self.set_config("model", result["model"])
+                        self._save_settings(result)
                     except Exception:
                         pass
                     return
