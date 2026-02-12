@@ -77,22 +77,7 @@ After installation and model setup:
 
 ## Settings
 
-### Configuration Priority
-
-LocalWriter loads configuration in the following order (highest priority first):
-
-1. **Environment Variables** (prefixed with `LOCALWRITER_`) - useful for keeping secrets out of files
-2. **Configuration File** (`localwriter.json`)
-3. **Default Values**
-
-Example using environment variables:
-```bash
-export LOCALWRITER_API_KEY="sk-your-secret-key"
-export LOCALWRITER_ENDPOINT="https://api.openai.com"
-/Applications/LibreOffice.app/Contents/MacOS/soffice --writer
-```
-
-### Configuration Files
+Settings can be configured via the settings dialog in LibreOffice (localwriter menu > Settings), or by editing the `localwriter.json` configuration file directly.
 
 See [CONFIG_EXAMPLES.md](CONFIG_EXAMPLES.md) for ready-to-use configuration examples.
 
@@ -103,52 +88,17 @@ Configuration file location:
 
 ### Available Settings
 
-In the settings dialog, you can configure:
-
-*   **Endpoint URL**: The URL of your LLM server (e.g., `http://localhost:3000` for OpenWebUI, `https://api.openai.com` for OpenAI)
+*   **Endpoint URL**: The URL of your LLM server (default: `http://localhost:11434` for Ollama)
 *   **Model**: The model name (e.g., `llama2`, `gpt-3.5-turbo`)
 *   **API Key**: Authentication key for OpenAI-compatible endpoints (optional for local servers)
-*   **API Type**: `chat` or `completions` (see explanation below ⭐)
-*   **Is OpenWebUI endpoint?**: Check this if using OpenWebUI (changes API path from `/v1/` to `/api/`)
-*   **OpenAI Compatible Endpoint?**: Check this for servers that strictly follow OpenAI format
+*   **API Type**: `completions` (default) or `chat` — use `chat` for OpenAI or servers with a `/chat/completions` endpoint
+*   **Is OpenWebUI endpoint?**: Set to `true` if using OpenWebUI (changes API path from `/v1/` to `/api/`)
+*   **OpenAI Compatible Endpoint?**: Set to `true` for servers that strictly follow OpenAI format
+*   **Disable SSL Verification**: Set to `true` to skip certificate checks — only use for local servers with self-signed certs
 *   **Extend Selection Max Tokens**: Maximum number of tokens for text extension
 *   **Extend Selection System Prompt**: Instructions prepended to guide the model's style for extension
 *   **Edit Selection Max New Tokens**: Additional tokens allowed above original selection length
 *   **Edit Selection System Prompt**: Instructions for guiding text editing behavior
-
-### ⭐ Understanding API Type (chat vs completions)
-
-The **API Type** setting determines the format of requests sent to your LLM server:
-
-#### `chat` (Recommended - Modern Format)
-Uses structured messages with roles:
-```json
-{
-  "messages": [
-    {"role": "system", "content": "You are a helpful assistant"},
-    {"role": "user", "content": "Hello"}
-  ]
-}
-```
-**Use `chat` for:**
-- OpenAI (GPT-4, GPT-3.5-turbo)
-- OpenWebUI
-- Ollama with `/api/chat` endpoint
-- Most modern LLM APIs
-
-#### `completions` (Legacy Format)
-Uses a simple text prompt:
-```json
-{
-  "prompt": "SYSTEM: You are a helpful assistant\nUSER: Hello"
-}
-```
-**Use `completions` for:**
-- Older OpenAI models (GPT-3 base)
-- Simple local inference servers
-- Some LM Studio configurations
-
-**Simple rule:** If your server has a `/chat/completions` endpoint, use `chat`. Otherwise use `completions`.
 
 ## Contributing
 
@@ -161,7 +111,7 @@ For developers who want to modify or contribute to Localwriter, you can run and 
 1. **Clone the Repository (if not already done):**
    - Clone the Localwriter repository to your local machine if you haven't already:
      ```
-     git clone https://github.com/balis-john/localwriter.git
+     git clone https://github.com/balisujohn/localwriter.git
      cd localwriter
      ```
 
