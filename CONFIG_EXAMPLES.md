@@ -15,7 +15,9 @@ Copy one of the examples below to your LibreOffice config folder as `localwriter
     "extend_selection_max_tokens": 70,
     "extend_selection_system_prompt": "",
     "edit_selection_max_new_tokens": 0,
-    "edit_selection_system_prompt": ""
+    "edit_selection_system_prompt": "",
+    "disable_ssl_verification": false,
+    "debug_logging": false
 }
 ```
 
@@ -32,7 +34,9 @@ Copy one of the examples below to your LibreOffice config folder as `localwriter
     "extend_selection_max_tokens": 70,
     "extend_selection_system_prompt": "",
     "edit_selection_max_new_tokens": 0,
-    "edit_selection_system_prompt": ""
+    "edit_selection_system_prompt": "",
+    "disable_ssl_verification": false,
+    "debug_logging": false
 }
 ```
 
@@ -49,7 +53,9 @@ Copy one of the examples below to your LibreOffice config folder as `localwriter
     "extend_selection_max_tokens": 100,
     "extend_selection_system_prompt": "",
     "edit_selection_max_new_tokens": 50,
-    "edit_selection_system_prompt": ""
+    "edit_selection_system_prompt": "",
+    "disable_ssl_verification": false,
+    "debug_logging": false
 }
 ```
 
@@ -68,7 +74,9 @@ Copy one of the examples below to your LibreOffice config folder as `localwriter
     "extend_selection_max_tokens": 70,
     "extend_selection_system_prompt": "",
     "edit_selection_max_new_tokens": 0,
-    "edit_selection_system_prompt": ""
+    "edit_selection_system_prompt": "",
+    "disable_ssl_verification": false,
+    "debug_logging": false
 }
 ```
 
