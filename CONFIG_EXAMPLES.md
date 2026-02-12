@@ -1,25 +1,8 @@
 # Configuration Examples for LocalWriter
 
-## OpenWebUI (Local)
-
-Copy this to your LibreOffice config folder as `localwriter.json`:
-
-```json
-{
-    "endpoint": "http://localhost:3000",
-    "model": "llama2",
-    "api_key": "",
-    "api_type": "chat",
-    "is_openwebui": true,
-    "openai_compatibility": false,
-    "extend_selection_max_tokens": 70,
-    "extend_selection_system_prompt": "",
-    "edit_selection_max_new_tokens": 0,
-    "edit_selection_system_prompt": ""
-}
-```
-
 ## Ollama (Local)
+
+Copy one of the examples below to your LibreOffice config folder as `localwriter.json` (see [Configuration File Location](#configuration-file-location) for the path).
 
 ```json
 {
@@ -28,6 +11,23 @@ Copy this to your LibreOffice config folder as `localwriter.json`:
     "api_key": "",
     "api_type": "chat",
     "is_openwebui": false,
+    "openai_compatibility": false,
+    "extend_selection_max_tokens": 70,
+    "extend_selection_system_prompt": "",
+    "edit_selection_max_new_tokens": 0,
+    "edit_selection_system_prompt": ""
+}
+```
+
+## OpenWebUI (Local)
+
+```json
+{
+    "endpoint": "http://localhost:3000",
+    "model": "llama2",
+    "api_key": "",
+    "api_type": "chat",
+    "is_openwebui": true,
     "openai_compatibility": false,
     "extend_selection_max_tokens": 70,
     "extend_selection_system_prompt": "",
@@ -53,7 +53,7 @@ Copy this to your LibreOffice config folder as `localwriter.json`:
 }
 ```
 
-**⚠️ IMPORTANT:** Never commit your actual API keys to git!
+**IMPORTANT:** Never commit your actual API keys to git!
 
 ## LM Studio (Local)
 
@@ -74,13 +74,9 @@ Copy this to your LibreOffice config folder as `localwriter.json`:
 
 ## Configuration File Location
 
-On macOS, the configuration file is located at:
-```
-~/Library/Application Support/LibreOffice/4/user/localwriter.json
-```
+Copy one of the examples above to your LibreOffice user config directory as `localwriter.json`:
+- macOS: `~/Library/Application Support/LibreOffice/4/user/localwriter.json`
+- Linux: `~/.config/libreoffice/4/user/localwriter.json`
+- Windows: `%APPDATA%\LibreOffice\4\user\localwriter.json`
 
-You can copy one of the examples above to this location, replacing `YOUR_API_KEY_HERE` with your actual API key if needed.
-
-## Environment Variables (Alternative)
-
-If you want to keep secrets out of the config file entirely, you could use environment variables. However, this would require modifying the extension code to read from environment variables as a fallback.
+Replace `YOUR_API_KEY_HERE` with your actual API key if needed.

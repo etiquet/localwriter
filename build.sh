@@ -1,17 +1,17 @@
 #!/bin/bash
-# Script de création du package .oxt pour l'extension LocalWriter
+# Build script for the LocalWriter .oxt extension package
 
-# Nom de l'extension
+# Extension name
 EXTENSION_NAME="localwriter"
 
-# Supprime l'ancien package s'il existe
+# Remove old package if it exists
 if [ -f "${EXTENSION_NAME}.oxt" ]; then
-    echo "Suppression de l'ancien package..."
+    echo "Removing old package..."
     rm "${EXTENSION_NAME}.oxt"
 fi
 
-# Crée le nouveau package
-echo "Création du package ${EXTENSION_NAME}.oxt..."
+# Create the new package
+echo "Creating package ${EXTENSION_NAME}.oxt..."
 zip -r "${EXTENSION_NAME}.oxt" \
     Accelerators.xcu \
     Addons.xcu \
@@ -23,16 +23,16 @@ zip -r "${EXTENSION_NAME}.oxt" \
     -x "*.git*" -x "*.DS_Store"
 
 if [ $? -eq 0 ]; then
-    echo "✅ Package créé avec succès : ${EXTENSION_NAME}.oxt"
+    echo "Package created successfully: ${EXTENSION_NAME}.oxt"
     echo ""
-    echo "Pour installer :"
-    echo "  1. Ouvrez LibreOffice"
-    echo "  2. Outils → Gestionnaire des extensions"
-    echo "  3. Ajouter → Sélectionnez ${EXTENSION_NAME}.oxt"
+    echo "To install:"
+    echo "  1. Open LibreOffice"
+    echo "  2. Tools > Extension Manager"
+    echo "  3. Add > Select ${EXTENSION_NAME}.oxt"
     echo ""
-    echo "Ou via la ligne de commande :"
+    echo "Or via command line:"
     echo "  unopkg add ${EXTENSION_NAME}.oxt"
 else
-    echo "❌ Erreur lors de la création du package"
+    echo "Error creating package"
     exit 1
 fi
