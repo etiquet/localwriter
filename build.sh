@@ -15,12 +15,12 @@ echo "Creating package ${EXTENSION_NAME}.oxt..."
 zip -r "${EXTENSION_NAME}.oxt" \
     Accelerators.xcu \
     Addons.xcu \
+    assets \
     description.xml \
     main.py \
-    META-INF/ \
-    registration/ \
-    assets/ \
-    -x "*.git*" -x "*.DS_Store"
+    META-INF \
+    registration \
+    README.md
 
 if [ $? -eq 0 ]; then
     echo "Package created successfully: ${EXTENSION_NAME}.oxt"

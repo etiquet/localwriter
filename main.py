@@ -16,17 +16,14 @@ from com.sun.star.beans import PropertyValue
 from com.sun.star.container import XNamed
 
 
+_debug_logging_enabled = False
+
 def log_to_file(message):
-    # Get the user's home directory
+    if not _debug_logging_enabled:
+        return
     home_directory = os.path.expanduser('~')
-    
-    # Define the log file path
     log_file_path = os.path.join(home_directory, 'log.txt')
-    
-    # Set up logging configuration
     logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(message)s')
-    
-    # Log the input message
     logging.info(message)
 
 
@@ -357,6 +354,7 @@ class MainJob(unohelper.Base, XJobExecutor):
         openai_compatibility_value = "true" if self._as_bool(self.get_config("openai_compatibility", False)) else "false"
         is_openwebui_value = "true" if self._as_bool(self.get_config("is_openwebui", False)) else "false"
         disable_ssl_value = "true" if self._as_bool(self.get_config("disable_ssl_verification", False)) else "false"
+        debug_logging_value = "true" if self._as_bool(self.get_config("debug_logging", False)) else "false"
         field_specs = [
             {"name": "endpoint", "label": "Endpoint URL/Port:", "value": str(self.get_config("endpoint","http://localhost:11434"))},
             {"name": "model", "label": "Model (Required by Ollama/OpenAI):", "value": str(self.get_config("model",""))},
@@ -365,6 +363,7 @@ class MainJob(unohelper.Base, XJobExecutor):
             {"name": "is_openwebui", "label": "Is OpenWebUI endpoint? (true/false):", "value": is_openwebui_value, "type": "bool"},
             {"name": "openai_compatibility", "label": "OpenAI Compatible Endpoint? (true/false):", "value": openai_compatibility_value, "type": "bool"},
             {"name": "disable_ssl_verification", "label": "Disable SSL verification? (true/false) -- RISK: exposes API keys to interception:", "value": disable_ssl_value, "type": "bool"},
+            {"name": "debug_logging", "label": "Enable debug logging to ~/log.txt? (true/false):", "value": debug_logging_value, "type": "bool"},
             {"name": "extend_selection_max_tokens", "label": "Extend Selection Max Tokens:", "value": str(self.get_config("extend_selection_max_tokens","70")), "type": "int"},
             {"name": "extend_selection_system_prompt", "label": "Extend Selection System Prompt:", "value": str(self.get_config("extend_selection_system_prompt",""))},
             {"name": "edit_selection_max_new_tokens", "label": "Edit Selection Max New Tokens:", "value": str(self.get_config("edit_selection_max_new_tokens","0")), "type": "int"},
@@ -465,13 +464,16 @@ class MainJob(unohelper.Base, XJobExecutor):
             self.set_config("model", result["model"])
         if "disable_ssl_verification" in result:
             self.set_config("disable_ssl_verification", result["disable_ssl_verification"])
+        if "debug_logging" in result:
+            self.set_config("debug_logging", result["debug_logging"])
 
     def trigger(self, args):
+        global _debug_logging_enabled
+        _debug_logging_enabled = self._as_bool(self.get_config("debug_logging", False))
+
         desktop = self.ctx.ServiceManager.createInstanceWithContext(
             "com.sun.star.frame.Desktop", self.ctx)
         model = desktop.getCurrentComponent()
-        #if not hasattr(model, "Text"):
-        #    model = self.desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, ())
 
         if hasattr(model, "Text"):
             text = model.Text
@@ -543,8 +545,8 @@ class MainJob(unohelper.Base, XJobExecutor):
                     try:
                         result = self.settings_box("Settings")
                         self._save_settings(result)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_to_file(f"Calc settings error: {str(e)}")
                     return
 
                 user_input = ""

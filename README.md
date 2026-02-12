@@ -65,7 +65,7 @@ After installation and model setup:
 
 1.  Enable the local OpenAI API (this ensures the API responds in a format similar to OpenAI).
 2.  Verify that the intended model is working (e.g., openchat3.5, suitable for 8GB VRAM setups).
-3.  Set the endpoint in Localwriter to `localhost:5000` (or the configured port).
+3.  Set the endpoint in Localwriter settings to `http://localhost:5000` (or the configured port). The default endpoint changed to Ollama's port (11434) in version 0.0.9, so text-generation-webui users must set this explicitly.
 
 #### Ollama
 

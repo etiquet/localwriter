@@ -1,9 +1,9 @@
 {
-    "endpoint": "http://localhost:3000",
+    "endpoint": "http://localhost:11434",
     "model": "llama2",
     "api_key": "",
-    "api_type": "chat",
-    "is_openwebui": true,
+    "api_type": "completions",
+    "is_openwebui": false,
     "openai_compatibility": false,
     "extend_selection_max_tokens": 70,
     "extend_selection_system_prompt": "",
