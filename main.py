@@ -210,144 +210,270 @@ class MainJob(unohelper.Base, XJobExecutor):
         dialog.dispose()
         return ret
 
-    def settings_box(self,title="", x=None, y=None):
-        """ Settings dialog with configurable backend options """
+    # Backend presets: (name, api_type, is_openwebui, openai_compat, default_endpoint)
+    BACKEND_PRESETS = [
+        ("Ollama",               "completions", False, False, "http://localhost:11434"),
+        ("LM Studio",           "completions", False, False, "http://localhost:1234"),
+        ("text-generation-webui","completions", False, False, "http://localhost:5000"),
+        ("OpenAI",               "chat",        False, False, "https://api.openai.com"),
+        ("OpenWebUI",            "chat",        True,  False, "http://localhost:3000"),
+        ("Custom",               None,          None,  None,  None),
+    ]
+
+    def _detect_backend(self):
+        api_type = str(self.get_config("api_type", "completions")).lower()
+        is_owui = self._as_bool(self.get_config("is_openwebui", False))
+        endpoint = str(self.get_config("endpoint", "http://localhost:11434"))
+        if is_owui:
+            return 4  # OpenWebUI
+        if api_type == "chat":
+            return 3  # OpenAI
+        if ":1234" in endpoint:
+            return 1  # LM Studio
+        if ":5000" in endpoint:
+            return 2  # text-generation-webui
+        return 0  # Ollama
+
+    def _read_dialog_config(self, controls):
+        """Read all control values and return a config dict."""
+        result = {}
+        # Backend preset -> api_type, is_openwebui, openai_compatibility
+        sel = controls["backend"].getModel().SelectedItems
+        backend_idx = sel[0] if sel else 0
+        preset = self.BACKEND_PRESETS[backend_idx]
+        if preset[1] is not None:  # not Custom
+            result["api_type"] = preset[1]
+            result["is_openwebui"] = preset[2]
+            result["openai_compatibility"] = preset[3]
+        else:
+            result["api_type"] = str(self.get_config("api_type", "completions"))
+            result["is_openwebui"] = self._as_bool(self.get_config("is_openwebui", False))
+            result["openai_compatibility"] = self._as_bool(
+                self.get_config("openai_compatibility", False))
+        # Text fields
+        for name in ["endpoint", "model", "api_key",
+                     "extend_selection_system_prompt", "edit_selection_system_prompt"]:
+            result[name] = controls[name].getModel().Text
+        # Checkboxes
+        for name in ["disable_ssl_verification", "debug_logging"]:
+            result[name] = controls[name].getModel().State == 1
+        # Numeric fields
+        for name in ["extend_selection_max_tokens", "edit_selection_max_new_tokens"]:
+            text = controls[name].getModel().Text
+            result[name] = int(text) if text.isdigit() else 0
+        return result
+
+    def settings_box(self, title="", x=None, y=None):
+        """ Settings dialog with backend preset, checkboxes, and JSON preview """
         WIDTH = 600
         HORI_MARGIN = VERT_MARGIN = 8
         BUTTON_WIDTH = 100
         BUTTON_HEIGHT = 26
         HORI_SEP = 8
         VERT_SEP = 4
-        LABEL_HEIGHT = BUTTON_HEIGHT  + 5
+        LABEL_HEIGHT = BUTTON_HEIGHT + 5
         EDIT_HEIGHT = 24
+        CHECKBOX_HEIGHT = 20
+        JSON_HEIGHT = 120
+
         import uno
         from com.sun.star.awt.PosSize import POS, SIZE, POSSIZE
         from com.sun.star.awt.PushButtonType import OK, CANCEL
         from com.sun.star.util.MeasureUnit import TWIP
+        from com.sun.star.awt import XActionListener, XItemListener
         ctx = uno.getComponentContext()
+
         def create(name):
             return ctx.getServiceManager().createInstanceWithContext(name, ctx)
+
         dialog = create("com.sun.star.awt.UnoControlDialog")
         dialog_model = create("com.sun.star.awt.UnoControlDialogModel")
         dialog.setModel(dialog_model)
         dialog.setVisible(False)
         dialog.setTitle(title)
 
-        openai_compatibility_value = "true" if self._as_bool(self.get_config("openai_compatibility", False)) else "false"
-        is_openwebui_value = "true" if self._as_bool(self.get_config("is_openwebui", False)) else "false"
-        disable_ssl_value = "true" if self._as_bool(self.get_config("disable_ssl_verification", False)) else "false"
-        debug_logging_value = "true" if self._as_bool(self.get_config("debug_logging", False)) else "false"
-        field_specs = [
-            {"name": "endpoint", "label": "Endpoint URL/Port:", "value": str(self.get_config("endpoint","http://localhost:11434"))},
-            {"name": "model", "label": "Model (Required by Ollama/OpenAI):", "value": str(self.get_config("model",""))},
-            {"name": "api_key", "label": "API Key (for OpenAI-compatible endpoints):", "value": str(self.get_config("api_key",""))},
-            {"name": "api_type", "label": "API Type (completions/chat):", "value": str(self.get_config("api_type","completions"))},
-            {"name": "is_openwebui", "label": "Is OpenWebUI endpoint? (true/false):", "value": is_openwebui_value, "type": "bool"},
-            {"name": "openai_compatibility", "label": "OpenAI Compatible Endpoint? (true/false):", "value": openai_compatibility_value, "type": "bool"},
-            {"name": "disable_ssl_verification", "label": "Disable SSL verification? (true/false) -- RISK: exposes API keys to interception:", "value": disable_ssl_value, "type": "bool"},
-            {"name": "debug_logging", "label": "Enable debug logging to ~/log.txt? (true/false):", "value": debug_logging_value, "type": "bool"},
-            {"name": "extend_selection_max_tokens", "label": "Extend Selection Max Tokens:", "value": str(self.get_config("extend_selection_max_tokens","70")), "type": "int"},
-            {"name": "extend_selection_system_prompt", "label": "Extend Selection System Prompt:", "value": str(self.get_config("extend_selection_system_prompt",""))},
-            {"name": "edit_selection_max_new_tokens", "label": "Edit Selection Max New Tokens:", "value": str(self.get_config("edit_selection_max_new_tokens","0")), "type": "int"},
-            {"name": "edit_selection_system_prompt", "label": "Edit Selection System Prompt:", "value": str(self.get_config("edit_selection_system_prompt",""))},
-        ]
-
-        num_fields = len(field_specs)
-        total_field_height = num_fields * (LABEL_HEIGHT + EDIT_HEIGHT + 2 * VERT_SEP)
-        HEIGHT = VERT_MARGIN * 2 + total_field_height
-        dialog.setPosSize(0, 0, WIDTH, HEIGHT, SIZE)
-
-        def add(name, type, x_, y_, width_, height_, props):
-            model = dialog_model.createInstance("com.sun.star.awt.UnoControl" + type + "Model")
+        def add(name, ctrl_type, x_, y_, width_, height_, props):
+            model = dialog_model.createInstance(
+                "com.sun.star.awt.UnoControl" + ctrl_type + "Model")
             dialog_model.insertByName(name, model)
             control = dialog.getControl(name)
             control.setPosSize(x_, y_, width_, height_, POSSIZE)
             for key, value in props.items():
                 setattr(model, key, value)
+            return control
 
         label_width = WIDTH - BUTTON_WIDTH - HORI_SEP - HORI_MARGIN * 2
-        field_controls = {}
-        current_y = VERT_MARGIN
-        for idx, field in enumerate(field_specs):
-            label_name = f"label_{field['name']}"
-            edit_name = f"edit_{field['name']}"
-            add(label_name, "FixedText", HORI_MARGIN, current_y, label_width, LABEL_HEIGHT,
-                {"Label": field["label"], "NoLabel": True})
-            if idx == 0:
-                add("btn_ok", "Button", HORI_MARGIN + label_width + HORI_SEP, current_y,
-                    BUTTON_WIDTH, BUTTON_HEIGHT, {"PushButtonType": OK, "DefaultButton": True})
-            current_y += LABEL_HEIGHT + VERT_SEP
-            add(edit_name, "Edit", HORI_MARGIN, current_y,
-                WIDTH - HORI_MARGIN * 2, EDIT_HEIGHT, {"Text": field["value"]})
-            field_controls[field["name"]] = dialog.getControl(edit_name)
-            current_y += EDIT_HEIGHT + VERT_SEP
+        edit_width = WIDTH - HORI_MARGIN * 2
+        controls = {}
+        y = VERT_MARGIN
 
+        # --- OK button (top-right) ---
+        add("btn_ok", "Button", HORI_MARGIN + label_width + HORI_SEP, y,
+            BUTTON_WIDTH, BUTTON_HEIGHT, {"PushButtonType": OK, "DefaultButton": True})
+
+        # --- Backend dropdown ---
+        add("label_backend", "FixedText", HORI_MARGIN, y, label_width, LABEL_HEIGHT,
+            {"Label": "Backend:", "NoLabel": True})
+        y += LABEL_HEIGHT + VERT_SEP
+        backend_names = tuple(p[0] for p in self.BACKEND_PRESETS)
+        current_backend = self._detect_backend()
+        controls["backend"] = add("list_backend", "ListBox", HORI_MARGIN, y,
+            edit_width, EDIT_HEIGHT,
+            {"Dropdown": True, "StringItemList": backend_names,
+             "SelectedItems": (current_backend,), "LineCount": 6})
+        y += EDIT_HEIGHT + VERT_SEP
+
+        # --- Text fields: endpoint, model, api_key ---
+        text_fields = [
+            ("endpoint", "Endpoint URL/Port:",
+             str(self.get_config("endpoint", "http://localhost:11434"))),
+            ("model", "Model:",
+             str(self.get_config("model", ""))),
+            ("api_key", "API Key:",
+             str(self.get_config("api_key", ""))),
+        ]
+        for name, label, value in text_fields:
+            add(f"label_{name}", "FixedText", HORI_MARGIN, y, label_width, LABEL_HEIGHT,
+                {"Label": label, "NoLabel": True})
+            y += LABEL_HEIGHT + VERT_SEP
+            controls[name] = add(f"edit_{name}", "Edit", HORI_MARGIN, y,
+                edit_width, EDIT_HEIGHT, {"Text": value})
+            y += EDIT_HEIGHT + VERT_SEP
+
+        # --- Checkboxes ---
+        disable_ssl = self._as_bool(self.get_config("disable_ssl_verification", False))
+        debug_log = self._as_bool(self.get_config("debug_logging", False))
+        checkbox_fields = [
+            ("disable_ssl_verification", "Disable SSL verification (exposes API keys to interception)", disable_ssl),
+            ("debug_logging", "Enable debug logging to ~/log.txt", debug_log),
+        ]
+        for name, label, checked in checkbox_fields:
+            controls[name] = add(f"cb_{name}", "CheckBox", HORI_MARGIN, y,
+                edit_width, CHECKBOX_HEIGHT,
+                {"Label": label, "State": 1 if checked else 0})
+            y += CHECKBOX_HEIGHT + VERT_SEP
+
+        # --- Numeric fields ---
+        int_fields = [
+            ("extend_selection_max_tokens", "Extend Selection Max Tokens:",
+             str(self.get_config("extend_selection_max_tokens", "70"))),
+            ("edit_selection_max_new_tokens", "Edit Selection Max New Tokens:",
+             str(self.get_config("edit_selection_max_new_tokens", "0"))),
+        ]
+        for name, label, value in int_fields:
+            add(f"label_{name}", "FixedText", HORI_MARGIN, y, label_width, LABEL_HEIGHT,
+                {"Label": label, "NoLabel": True})
+            y += LABEL_HEIGHT + VERT_SEP
+            controls[name] = add(f"edit_{name}", "Edit", HORI_MARGIN, y,
+                edit_width, EDIT_HEIGHT, {"Text": value})
+            y += EDIT_HEIGHT + VERT_SEP
+
+        # --- System prompt fields ---
+        prompt_fields = [
+            ("extend_selection_system_prompt", "Extend Selection System Prompt:",
+             str(self.get_config("extend_selection_system_prompt", ""))),
+            ("edit_selection_system_prompt", "Edit Selection System Prompt:",
+             str(self.get_config("edit_selection_system_prompt", ""))),
+        ]
+        for name, label, value in prompt_fields:
+            add(f"label_{name}", "FixedText", HORI_MARGIN, y, label_width, LABEL_HEIGHT,
+                {"Label": label, "NoLabel": True})
+            y += LABEL_HEIGHT + VERT_SEP
+            controls[name] = add(f"edit_{name}", "Edit", HORI_MARGIN, y,
+                edit_width, EDIT_HEIGHT, {"Text": value})
+            y += EDIT_HEIGHT + VERT_SEP
+
+        # --- Apply button ---
+        add("btn_apply", "Button", HORI_MARGIN, y, BUTTON_WIDTH, BUTTON_HEIGHT,
+            {"Label": "Apply"})
+        y += BUTTON_HEIGHT + VERT_SEP
+
+        # --- JSON preview ---
+        add("label_json", "FixedText", HORI_MARGIN, y, label_width, LABEL_HEIGHT,
+            {"Label": "Configuration preview:", "NoLabel": True})
+        y += LABEL_HEIGHT + VERT_SEP
+        json_ctrl = add("edit_json", "Edit", HORI_MARGIN, y, edit_width, JSON_HEIGHT,
+            {"Text": "", "ReadOnly": True, "MultiLine": True, "VScroll": True})
+        y += JSON_HEIGHT + VERT_MARGIN
+
+        # --- Size and position ---
+        dialog_height = y
+        dialog.setPosSize(0, 0, WIDTH, dialog_height, SIZE)
         frame = create("com.sun.star.frame.Desktop").getCurrentFrame()
         window = frame.getContainerWindow() if frame else None
         dialog.createPeer(create("com.sun.star.awt.Toolkit"), window)
-        if not x is None and not y is None:
-            ps = dialog.convertSizeToPixel(uno.createUnoStruct("com.sun.star.awt.Size", x, y), TWIP)
+        if x is not None and y is not None:
+            ps = dialog.convertSizeToPixel(
+                uno.createUnoStruct("com.sun.star.awt.Size", x, y), TWIP)
             _x, _y = ps.Width, ps.Height
         elif window:
             ps = window.getPosSize()
             _x = ps.Width / 2 - WIDTH / 2
-            _y = ps.Height / 2 - HEIGHT / 2
+            _y = ps.Height / 2 - dialog_height / 2
         dialog.setPosSize(_x, _y, 0, 0, POS)
 
-        for field in field_specs:
-            control = field_controls[field["name"]]
-            text_value = str(field["value"])
-            control.setSelection(uno.createUnoStruct("com.sun.star.awt.Selection", 0, len(text_value)))
+        # --- Update JSON preview from current control values ---
+        settings_box_self = self
 
-        field_controls["endpoint"].setFocus()
+        def update_json_preview():
+            config = settings_box_self._read_dialog_config(controls)
+            json_ctrl.getModel().Text = json.dumps(config, indent=2)
 
+        # Show initial JSON preview
+        update_json_preview()
+
+        # --- Backend change listener: auto-fill endpoint ---
+        presets = self.BACKEND_PRESETS
+
+        class BackendListener(unohelper.Base, XItemListener):
+            def itemStateChanged(self, event):
+                sel = controls["backend"].getModel().SelectedItems
+                if not sel:
+                    return
+                idx = sel[0]
+                preset = presets[idx]
+                if preset[4] is not None:  # has default endpoint
+                    controls["endpoint"].getModel().Text = preset[4]
+                update_json_preview()
+
+            def disposing(self, source):
+                pass
+
+        controls["backend"].addItemListener(BackendListener())
+
+        # --- Apply button listener: save + update preview ---
+        class ApplyListener(unohelper.Base, XActionListener):
+            def actionPerformed(self, event):
+                config = settings_box_self._read_dialog_config(controls)
+                settings_box_self._save_settings(config)
+                update_json_preview()
+
+            def disposing(self, source):
+                pass
+
+        dialog.getControl("btn_apply").addActionListener(ApplyListener())
+
+        controls["endpoint"].setFocus()
+
+        # --- Execute and collect results ---
         if dialog.execute():
-            result = {}
-            for field in field_specs:
-                control_text = field_controls[field["name"]].getModel().Text
-                field_type = field.get("type", "text")
-                if field_type == "int":
-                    if control_text.isdigit():
-                        result[field["name"]] = int(control_text)
-                elif field_type == "bool":
-                    result[field["name"]] = self._as_bool(control_text)
-                else:
-                    result[field["name"]] = control_text
+            result = self._read_dialog_config(controls)
         else:
             result = {}
 
         dialog.dispose()
         return result
-    #end sharealike section 
+    #end sharealike section
 
     def _save_settings(self, result):
-        if "extend_selection_max_tokens" in result:
-            self.set_config("extend_selection_max_tokens", result["extend_selection_max_tokens"])
-        if "extend_selection_system_prompt" in result:
-            self.set_config("extend_selection_system_prompt", result["extend_selection_system_prompt"])
-        if "edit_selection_max_new_tokens" in result:
-            self.set_config("edit_selection_max_new_tokens", result["edit_selection_max_new_tokens"])
-        if "edit_selection_system_prompt" in result:
-            self.set_config("edit_selection_system_prompt", result["edit_selection_system_prompt"])
-        if "endpoint" in result and result["endpoint"].startswith("http"):
-            self.set_config("endpoint", result["endpoint"])
-        if "api_key" in result:
-            self.set_config("api_key", result["api_key"])
-        if "api_type" in result:
-            api_type_value = str(result["api_type"]).strip().lower()
-            if api_type_value not in ("chat", "completions"):
-                api_type_value = "completions"
-            self.set_config("api_type", api_type_value)
-        if "is_openwebui" in result:
-            self.set_config("is_openwebui", result["is_openwebui"])
-        if "openai_compatibility" in result:
-            self.set_config("openai_compatibility", result["openai_compatibility"])
-        if "model" in result:
-            self.set_config("model", result["model"])
-        if "disable_ssl_verification" in result:
-            self.set_config("disable_ssl_verification", result["disable_ssl_verification"])
-        if "debug_logging" in result:
-            self.set_config("debug_logging", result["debug_logging"])
+        for key, value in result.items():
+            if key == "endpoint" and not str(value).startswith("http"):
+                continue
+            if key == "api_type":
+                value = str(value).strip().lower()
+                if value not in ("chat", "completions"):
+                    value = "completions"
+            self.set_config(key, value)
 
     def trigger(self, args):
         global _debug_logging_enabled
