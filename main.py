@@ -8,12 +8,15 @@ import ssl
 from com.sun.star.task import XJobExecutor
 from com.sun.star.awt import MessageBoxButtons as MSG_BUTTONS
 import uno
-import os 
+import os
 import logging
 import re
 
 from com.sun.star.beans import PropertyValue
 from com.sun.star.container import XNamed
+
+from llm import (as_bool, is_openai_compatible, build_api_request,
+                 extract_content, make_ssl_context, stream_response)
 
 
 _debug_logging_enabled = False
@@ -107,160 +110,39 @@ class MainJob(unohelper.Base, XJobExecutor):
             print(f"Error writing to {config_file_path}: {e}")
 
     def _as_bool(self, value):
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.strip().lower() in ("1", "true", "yes", "on")
-        if isinstance(value, (int, float)):
-            return value != 0
-        return False
+        return as_bool(value)
 
     def _is_openai_compatible(self):
         endpoint = str(self.get_config("endpoint", "http://localhost:11434"))
-        compatibility_flag = self._as_bool(self.get_config("openai_compatibility", False))
-        return compatibility_flag or ("api.openai.com" in endpoint.lower())
+        compatibility_flag = self.get_config("openai_compatibility", False)
+        return is_openai_compatible(endpoint, compatibility_flag)
 
     def make_api_request(self, prompt, system_prompt="", max_tokens=70, api_type=None):
-        """
-        Build a streaming completion/chat request that can target local or OpenAI-compatible endpoints.
-        """
-        try:
-            max_tokens = int(max_tokens)
-        except (TypeError, ValueError):
-            max_tokens = 70
-
-        endpoint = str(self.get_config("endpoint", "http://localhost:11434")).rstrip("/")
+        endpoint = str(self.get_config("endpoint", "http://localhost:11434"))
         api_key = str(self.get_config("api_key", ""))
         if api_type is None:
             api_type = str(self.get_config("api_type", "completions")).lower()
-        api_type = "chat" if api_type == "chat" else "completions"
         model = str(self.get_config("model", ""))
-        
-        log_to_file(f"=== API Request Debug ===")
-        log_to_file(f"Endpoint: {endpoint}")
-        log_to_file(f"API Type: {api_type}")
-        log_to_file(f"Model: {model}")
-        log_to_file(f"Max Tokens: {max_tokens}")
-
-        headers = {
-            'Content-Type': 'application/json'
-        }
-
-        if api_key:
-            headers['Authorization'] = f'Bearer {api_key}'
-
-        # Detect OpenWebUI endpoints (they use /api/ instead of /v1/)
-        is_openwebui = self._as_bool(self.get_config("is_openwebui", False)) or "open-webui" in endpoint.lower() or "openwebui" in endpoint.lower()
-        api_path = "/api" if is_openwebui else "/v1"
-        
-        log_to_file(f"Is OpenWebUI: {is_openwebui}")
-        log_to_file(f"API Path: {api_path}")
-
-        if api_type == "chat":
-            url = endpoint + api_path + "/chat/completions"
-            log_to_file(f"Full URL: {url}")
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
-            data = {
-                'messages': messages,
-                'max_tokens': max_tokens,
-                'temperature': 1,
-                'top_p': 0.9,
-                'stream': True
-            }
-        else:
-            url = endpoint + api_path + "/completions"
-            full_prompt = prompt
-            if system_prompt:
-                full_prompt = f"SYSTEM PROMPT\n{system_prompt}\nEND SYSTEM PROMPT\n{prompt}"
-            data = {
-                'prompt': full_prompt,
-                'max_tokens': max_tokens,
-                'temperature': 1,
-                'top_p': 0.9,
-                'stream': True
-            }
-            if not self._is_openai_compatible():
-                data['seed'] = 10
-
-        if model:
-            data["model"] = model
-
-        json_data = json.dumps(data).encode('utf-8')
-        log_to_file(f"Request data: {json.dumps(data, indent=2)}")
-        safe_headers = {k: ("***" if k == "Authorization" else v) for k, v in headers.items()}
-        log_to_file(f"Headers: {safe_headers}")
-        
-        # Note: method='POST' is implicit when data is provided
-        request = urllib.request.Request(url, data=json_data, headers=headers)
-        request.get_method = lambda: 'POST'
-        return request
+        is_owui = self.get_config("is_openwebui", False)
+        openai_compat = self.get_config("openai_compatibility", False)
+        return build_api_request(prompt, endpoint, api_key, api_type, model,
+                                 is_owui, openai_compat, system_prompt, max_tokens,
+                                 log_fn=log_to_file)
 
     def extract_content_from_response(self, chunk, api_type="completions"):
-        """
-        Extract text content from API response chunk based on API type.
-        """
-        if api_type == "chat":
-            # OpenAI chat completions format
-            if "choices" in chunk and len(chunk["choices"]) > 0:
-                delta = chunk["choices"][0].get("delta", {})
-                return delta.get("content", ""), chunk["choices"][0].get("finish_reason")
-        else:
-            # Legacy completions format
-            if "choices" in chunk and len(chunk["choices"]) > 0:
-                return chunk["choices"][0].get("text", ""), chunk["choices"][0].get("finish_reason")
-        
-        return "", None
+        return extract_content(chunk, api_type)
 
     def get_ssl_context(self):
-        if self._as_bool(self.get_config("disable_ssl_verification", False)):
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-            return ssl_context
-        return ssl.create_default_context()
+        disable = self.get_config("disable_ssl_verification", False)
+        return make_ssl_context(disable)
 
     def stream_request(self, request, api_type, append_callback):
-        """
-        Stream a completion/chat response and append incremental chunks via the provided callback.
-        """
         toolkit = self.ctx.getServiceManager().createInstanceWithContext(
             "com.sun.star.awt.Toolkit", self.ctx
         )
-        ssl_context = self.get_ssl_context()
-        
-        log_to_file(f"=== Starting stream request ===")
-        log_to_file(f"Request URL: {request.full_url}")
-        log_to_file(f"Request method: {request.get_method()}")
-        
-        try:
-            with urllib.request.urlopen(request, context=ssl_context) as response:
-                log_to_file(f"Response status: {response.status}")
-                log_to_file(f"Response headers: {response.headers}")
-                
-                for line in response:
-                    try:
-                        if line.strip() and line.startswith(b"data: "):
-                            payload = line[len(b"data: "):].decode("utf-8").strip()
-                            if payload == "[DONE]":
-                                break
-                            chunk = json.loads(payload)
-                            content, finish_reason = self.extract_content_from_response(chunk, api_type)
-                            if content:
-                                append_callback(content)
-                                toolkit.processEventsToIdle()
-                            if finish_reason:
-                                break
-                    except Exception as e:
-                        log_to_file(f"Error processing line: {str(e)}")
-                        append_callback(str(e))
-                        toolkit.processEventsToIdle()
-        except Exception as e:
-            log_to_file(f"ERROR in stream_request: {str(e)}")
-            append_callback(f"ERROR: {str(e)}")
-            toolkit.processEventsToIdle()
+        ssl_ctx = self.get_ssl_context()
+        stream_response(request, api_type, ssl_ctx, append_callback,
+                        on_idle=toolkit.processEventsToIdle, log_fn=log_to_file)
 
     #retrieved from https://wiki.documentfoundation.org/Macros/General/IO_to_Screen
     #License: Creative Commons Attribution-ShareAlike 3.0 Unported License,

@@ -161,6 +161,7 @@ zip -r localwriter.oxt \
   assets \
   description.xml \
   main.py \
+  pythonpath \
   META-INF \
   registration \
   README.md
