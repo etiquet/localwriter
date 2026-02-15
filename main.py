@@ -383,13 +383,11 @@ class MainJob(unohelper.Base, XJobExecutor):
                 edit_width, EDIT_HEIGHT, {"Text": value})
             y += EDIT_HEIGHT + VERT_SEP
 
-        # --- Apply button ---
-        add("btn_apply", "Button", HORI_MARGIN, y, BUTTON_WIDTH, BUTTON_HEIGHT,
-            {"Label": "Apply"})
-        y += BUTTON_HEIGHT + VERT_SEP
-
         # --- JSON preview ---
-        add("label_json", "FixedText", HORI_MARGIN, y, label_width, LABEL_HEIGHT,
+        add("btn_refresh", "Button", HORI_MARGIN, y, BUTTON_WIDTH, BUTTON_HEIGHT,
+            {"Label": "Refresh"})
+        add("label_json", "FixedText", HORI_MARGIN + BUTTON_WIDTH + HORI_SEP, y,
+            label_width - BUTTON_WIDTH - HORI_SEP, LABEL_HEIGHT,
             {"Label": "Configuration preview:", "NoLabel": True})
         y += LABEL_HEIGHT + VERT_SEP
         json_ctrl = add("edit_json", "Edit", HORI_MARGIN, y, edit_width, JSON_HEIGHT,
@@ -441,17 +439,15 @@ class MainJob(unohelper.Base, XJobExecutor):
 
         controls["backend"].addItemListener(BackendListener())
 
-        # --- Apply button listener: save + update preview ---
-        class ApplyListener(unohelper.Base, XActionListener):
+        # --- Refresh button listener: update preview from current controls ---
+        class RefreshListener(unohelper.Base, XActionListener):
             def actionPerformed(self, event):
-                config = settings_box_self._read_dialog_config(controls)
-                settings_box_self._save_settings(config)
                 update_json_preview()
 
             def disposing(self, source):
                 pass
 
-        dialog.getControl("btn_apply").addActionListener(ApplyListener())
+        dialog.getControl("btn_refresh").addActionListener(RefreshListener())
 
         controls["endpoint"].setFocus()
 
