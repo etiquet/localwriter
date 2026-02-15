@@ -346,7 +346,7 @@ class MainJob(unohelper.Base, XJobExecutor):
         debug_log = self._as_bool(self.get_config("debug_logging", False))
         checkbox_fields = [
             ("disable_ssl_verification", "Disable SSL verification (exposes API keys to interception)", disable_ssl),
-            ("debug_logging", "Enable debug logging to ~/.localwriter/log.txt", debug_log),
+            ("debug_logging", "Enable debug logging to ~~/.localwriter/log.txt", debug_log),
         ]
         for name, label, checked in checkbox_fields:
             controls[name] = add(f"cb_{name}", "CheckBox", HORI_MARGIN, y,
