@@ -24,8 +24,9 @@ _debug_logging_enabled = False
 def log_to_file(message):
     if not _debug_logging_enabled:
         return
-    home_directory = os.path.expanduser('~')
-    log_file_path = os.path.join(home_directory, 'log.txt')
+    log_dir = os.path.join(os.path.expanduser('~'), '.localwriter')
+    os.makedirs(log_dir, exist_ok=True)
+    log_file_path = os.path.join(log_dir, 'log.txt')
     logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(message)s')
     logging.info(message)
 
@@ -345,7 +346,7 @@ class MainJob(unohelper.Base, XJobExecutor):
         debug_log = self._as_bool(self.get_config("debug_logging", False))
         checkbox_fields = [
             ("disable_ssl_verification", "Disable SSL verification (exposes API keys to interception)", disable_ssl),
-            ("debug_logging", "Enable debug logging to ~/log.txt", debug_log),
+            ("debug_logging", "Enable debug logging to ~/.localwriter/log.txt", debug_log),
         ]
         for name, label, checked in checkbox_fields:
             controls[name] = add(f"cb_{name}", "CheckBox", HORI_MARGIN, y,

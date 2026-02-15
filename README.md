@@ -77,9 +77,7 @@ After installation and model setup:
 
 ## Settings
 
-Settings can be configured via the settings dialog in LibreOffice (localwriter menu > Settings), or by editing the `localwriter.json` configuration file directly.
-
-See [CONFIG_EXAMPLES.md](CONFIG_EXAMPLES.md) for ready-to-use configuration examples.
+Settings can be configured via the settings dialog in LibreOffice (localwriter menu > Settings).
 
 Configuration file location:
 - macOS: `~/Library/Application Support/LibreOffice/4/user/localwriter.json`
